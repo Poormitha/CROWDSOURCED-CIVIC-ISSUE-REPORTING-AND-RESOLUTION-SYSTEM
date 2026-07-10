@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — CivicFix</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="nav-wrap">
+    <a href="index.html" class="brand">Civic<span class="dot">Fix</span></a>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="issues.html">View Issues</a></li>
+      <li><a href="report.html">Report Issue</a></li>
+      <li><a href="map.html">Map</a></li>
+    </ul>
+    <div class="nav-user" id="navUser"></div>
+  </div>
+</header>
+
+<div class="auth-wrap">
+  <div class="form-card">
+    <div class="auth-tabs">
+      <a href="#" class="tab-link active" data-role="citizen">Citizen Login</a>
+      <a href="#" class="tab-link" data-role="admin">Admin Login</a>
+      <a href="#" class="tab-link" data-role="department">Department Login</a>
+    </div>
+
+    <h2 style="font-size:22px;">Welcome Back</h2>
+    <p class="muted" style="margin-top:-6px; margin-bottom:22px;" id="roleHint">Sign in to report and track civic issues.</p>
+
+    <form id="loginForm">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="email" placeholder="you@example.com" required>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="••••••••" required>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Login</button>
+    </form>
+
+    <div class="divider-or">or</div>
+    <button class="btn btn-outline btn-block" id="googleBtn">Continue with Google (optional)</button>
+
+    <p class="small text-center" style="margin-top:20px;">
+      New citizen? <a href="register.html" style="font-weight:700; text-decoration:underline;">Create an account</a>
+    </p>
+
+    <div class="card-pad" style="background:#F3F1EC; border-radius:6px; margin-top:20px; font-size:12.5px;">
+      <strong>Demo accounts</strong><br>
+      Citizen: anita@example.com / citizen123<br>
+      Admin: admin@civicfix.gov / admin123<br>
+      Department: roads@civicfix.gov / dept123
+    </div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="container">
+    <div>© 2026 CivicFix — A community reporting platform prototype.</div>
+  </div>
+</footer>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>
+  let selectedRole = "citizen";
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("role")) selectedRole = params.get("role");
+
+  const hints = {
+    citizen: "Sign in to report and track civic issues.",
+    admin: "Sign in to manage reports, departments and analytics.",
+    department: "Sign in to view and update issues assigned to your department."
+  };
+
+  function setActiveTab(role) {
+    selectedRole = role;
+    document.querySelectorAll(".tab-link").forEach(t => t.classList.toggle("active", t.dataset.role === role));
+    document.getElementById("roleHint").textContent = hints[role];
+  }
+  document.querySelectorAll(".tab-link").forEach(t => {
+    t.addEventListener("click", (e) => { e.preventDefault(); setActiveTab(t.dataset.role); });
+  });
+  setActiveTab(selectedRole);
+
+  document.getElementById("googleBtn").addEventListener("click", () => {
+    toast("Google Login is a placeholder in this prototype.");
+  });
+
+  document.getElementById("loginForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const email = document.getElementById("email").value.trim().toLowerCase();
+    const password = document.getElementById("password").value;
+    const db = loadDB();
+    const user = db.users.find(u => u.email.toLowerCase() === email && u.password === password);
+    if (!user) { toast("Invalid email or password."); return; }
+    if (user.role !== selectedRole) { toast(`This account is a ${user.role} account. Switch tabs to log in.`); return; }
+    setSession(user);
+    toast(`Welcome back, ${user.name.split(" ")[0]}!`);
+    setTimeout(() => {
+      if (user.role === "admin") window.location.href = "admin.html";
+      else if (user.role === "department") window.location.href = "department.html";
+      else window.location.href = "profile.html";
+    }, 500);
+  });
+</script>
+</body>
+</html>
