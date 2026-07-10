@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Report an Issue — CivicFix</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="nav-wrap">
+    <a href="index.html" class="brand">Civic<span class="dot">Fix</span></a>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="issues.html">View Issues</a></li>
+      <li><a href="report.html" class="active">Report Issue</a></li>
+      <li><a href="map.html">Map</a></li>
+    </ul>
+    <div class="nav-user" id="navUser"></div>
+  </div>
+</header>
+
+<section class="section">
+  <div class="container">
+    <div class="text-center" style="margin-bottom:30px;">
+      <h1 style="font-size:30px;">Report a Civic Issue</h1>
+      <p class="muted">Fill in the details below. Clear photos and accurate locations help departments resolve issues faster.</p>
+    </div>
+
+    <div class="form-card" style="max-width:720px;">
+      <form id="reportForm">
+
+        <div class="form-group">
+          <label>Issue Title</label>
+          <input type="text" id="title" placeholder="e.g. Pothole near main junction" required>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="description" placeholder="Describe the issue in detail — what, where, since when, and how it affects people." required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Category</label>
+          <select id="category" required>
+            <option value="">Select a category</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Upload Image</label>
+          <div class="upload-box" id="uploadBox">
+            <div id="uploadPlaceholder">📷<br>Click to upload a photo of the issue</div>
+            <img id="previewImg" style="display:none;">
+          </div>
+          <input type="file" id="fileInput" accept="image/*" style="display:none;">
+        </div>
+
+        <div class="form-group">
+          <label>Current Location</label>
+          <div id="reportMap" class="map-frame" style="height:260px;"></div>
+          <p class="small muted" style="margin-top:8px;">Click on the map to drop a pin at the issue location.</p>
+          <input type="text" id="address" placeholder="Address / landmark" style="margin-top:10px;" required>
+        </div>
+
+        <div class="form-group">
+          <label>Severity</label>
+          <div class="severity-choice">
+            <input type="radio" name="severity" id="sevLow" value="Low"><label for="sevLow">🟢 Low</label>
+            <input type="radio" name="severity" id="sevMedium" value="Medium" checked><label for="sevMedium">🟡 Medium</label>
+            <input type="radio" name="severity" id="sevHigh" value="High"><label for="sevHigh">🔴 High</label>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block">Submit Report</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container">
+    <div>© 2026 CivicFix — A community reporting platform prototype.</div>
+  </div>
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>
+  const session = requireAuth();
+  if (session) {
+    // Populate categories
+    const sel = document.getElementById("category");
+    CATEGORIES.forEach(c => sel.innerHTML += `<option value="${c}">${c}</option>`);
+
+    // Severity styling
+    document.querySelectorAll('.severity-choice input').forEach(inp => {
+      inp.addEventListener('change', () => {
+        document.querySelectorAll('.severity-choice label').forEach(l => l.classList.remove('checked'));
+        document.querySelector(`label[for="${inp.id}"]`).classList.add('checked');
+      });
+    });
+    document.querySelector('label[for="sevMedium"]').classList.add('checked');
+
+    // Image upload preview
+    const emojiByCategory = { "Road Damage": "🕳️", "Garbage": "🗑️", "Water Leakage": "💧", "Street Light": "💡", "Drainage": "🌊", "Illegal Dumping": "🚧", "Electricity": "⚡", "Public Toilet": "🚻" };
+    let uploadedImageEmoji = "📍";
+    document.getElementById("uploadBox").addEventListener("click", () => document.getElementById("fileInput").click());
+    document.getElementById("fileInput").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        document.getElementById("previewImg").src = ev.target.result;
+        document.getElementById("previewImg").style.display = "block";
+        document.getElementById("uploadPlaceholder").style.display = "none";
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Map for pin drop
+    let pinLat = 11.0080, pinLng = 76.9600;
+    const map = L.map('reportMap').setView([pinLat, pinLng], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    let marker = L.marker([pinLat, pinLng], { draggable: true }).addTo(map);
+    marker.on('dragend', (e) => { const p = e.target.getLatLng(); pinLat = p.lat; pinLng = p.lng; });
+    map.on('click', (e) => {
+      pinLat = e.latlng.lat; pinLng = e.latlng.lng;
+      marker.setLatLng(e.latlng);
+    });
+
+    document.getElementById("reportForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const category = document.getElementById("category").value;
+      const db = loadDB();
+      const issue = {
+        id: uid("i"),
+        title: document.getElementById("title").value.trim(),
+        description: document.getElementById("description").value.trim(),
+        category,
+        severity: document.querySelector('input[name="severity"]:checked').value,
+        image: emojiByCategory[category] || "📍",
+        lat: pinLat, lng: pinLng,
+        address: document.getElementById("address").value.trim(),
+        status: "Reported",
+        assignedDept: "",
+        expectedDate: "",
+        reportedBy: session.id,
+        reportedByName: session.name,
+        date: new Date().toISOString(),
+        likes: [], votes: 0, comments: [],
+        history: [{ status: "Reported", date: new Date().toISOString() }]
+      };
+      db.issues.push(issue);
+      db.notifications.push({ id: uid("n"), userId: session.id, message: `Your report "${issue.title}" has been submitted and is awaiting verification.`, date: new Date().toISOString(), read: false });
+      saveDB(db);
+      toast("Issue reported successfully!");
+      setTimeout(() => window.location.href = "issue-details.html?id=" + issue.id, 700);
+    });
+  }
+</script>
+</body>
+</html>

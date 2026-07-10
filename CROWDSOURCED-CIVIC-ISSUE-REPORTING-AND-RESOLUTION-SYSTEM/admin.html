@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard — CivicFix</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="nav-wrap">
+    <a href="index.html" class="brand">Civic<span class="dot">Fix</span></a>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="issues.html">View Issues</a></li>
+      <li><a href="map.html">Map</a></li>
+    </ul>
+    <div class="nav-user" id="navUser"></div>
+  </div>
+</header>
+
+<section class="section">
+  <div class="container">
+    <div class="dash-layout">
+      <nav class="dash-side">
+        <a href="#overview" class="active">Overview</a>
+        <a href="#issues">Manage Issues</a>
+        <a href="#analytics">Analytics</a>
+        <a href="index.html">← Back to site</a>
+      </nav>
+
+      <div>
+        <div class="section-title-row" id="overview">
+          <div>
+            <h1 style="font-size:26px;">Admin Dashboard</h1>
+            <p class="muted">City-wide overview of all reported civic issues.</p>
+          </div>
+        </div>
+
+        <div class="kpi-row" id="kpiRow"></div>
+
+        <div class="grid-2" id="analytics" style="margin-bottom:34px;">
+          <div class="card card-pad">
+            <h3 style="font-size:15px;">Issues by Category</h3>
+            <canvas id="categoryChart" height="200"></canvas>
+          </div>
+          <div class="card card-pad">
+            <h3 style="font-size:15px;">Issues by Status</h3>
+            <canvas id="statusChart" height="200"></canvas>
+          </div>
+        </div>
+
+        <div id="issues">
+          <div class="section-title-row">
+            <h3 style="font-size:18px;">Manage Reports</h3>
+          </div>
+          <div class="filter-bar">
+            <input type="text" id="search" placeholder="Search by title or reporter...">
+            <select id="filterStatus">
+              <option value="">All Statuses</option>
+              <option>Reported</option><option>Verified</option><option>Assigned</option><option>Work Started</option><option>Completed</option>
+            </select>
+            <select id="filterCategory"><option value="">All Categories</option></select>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr><th>Title</th><th>Category</th><th>Reported By</th><th>Status</th><th>Department</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="issueTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container">
+    <div>© 2026 CivicFix — A community reporting platform prototype.</div>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+<script>
+  const session = requireAuth("admin");
+  if (session) {
+    const db = loadDB();
+    const catSel = document.getElementById("filterCategory");
+    CATEGORIES.forEach(c => catSel.innerHTML += `<option value="${c}">${c}</option>`);
+
+    function renderKPIs() {
+      const total = db.issues.length;
+      const resolved = db.issues.filter(i => i.status === "Completed").length;
+      const pending = db.issues.filter(i => i.status !== "Completed").length;
+      const users = db.users.filter(u => u.role === "citizen").length;
+      document.getElementById("kpiRow").innerHTML = `
+        <div class="kpi"><div class="num">${users}</div><div class="label">Total Users</div></div>
+        <div class="kpi"><div class="num">${total}</div><div class="label">Total Reports</div></div>
+        <div class="kpi"><div class="num" style="color:#E4572E;">${pending}</div><div class="label">Pending Issues</div></div>
+        <div class="kpi"><div class="num" style="color:#2E9B4D;">${resolved}</div><div class="label">Completed Issues</div></div>
+      `;
+    }
+    renderKPIs();
+
+    // Charts
+    const catCounts = CATEGORIES.map(c => db.issues.filter(i => i.category === c).length);
+    new Chart(document.getElementById("categoryChart"), {
+      type: 'bar',
+      data: { labels: CATEGORIES, datasets: [{ data: catCounts, backgroundColor: "#FFC845", borderRadius: 4 }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+
+    const statusCounts = STATUS_STEPS.map(s => db.issues.filter(i => i.status === s).length);
+    new Chart(document.getElementById("statusChart"), {
+      type: 'doughnut',
+      data: { labels: STATUS_STEPS, datasets: [{ data: statusCounts, backgroundColor: ["#E4572E","#3D7DD6","#7C5CBF","#F2B705","#2E9B4D"] }] },
+      options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } } }
+    });
+
+    function renderTable() {
+      let list = [...db.issues];
+      const q = document.getElementById("search").value.trim().toLowerCase();
+      const status = document.getElementById("filterStatus").value;
+      const cat = document.getElementById("filterCategory").value;
+      if (q) list = list.filter(i => i.title.toLowerCase().includes(q) || i.reportedByName.toLowerCase().includes(q));
+      if (status) list = list.filter(i => i.status === status);
+      if (cat) list = list.filter(i => i.category === cat);
+
+      document.getElementById("issueTableBody").innerHTML = list.map(issue => `
+        <tr>
+          <td><a href="issue-details.html?id=${issue.id}">${issue.title}</a></td>
+          <td>${issue.category}</td>
+          <td>${issue.reportedByName}</td>
+          <td><span class="pill ${statusPillClass(issue.status)}">${issue.status}</span></td>
+          <td>
+            <select data-id="${issue.id}" class="assignDept" style="padding:6px 8px; font-size:12px;">
+              <option value="">Unassigned</option>
+              ${DEPARTMENTS.map(d => `<option value="${d}" ${issue.assignedDept === d ? "selected" : ""}>${d}</option>`).join("")}
+            </select>
+          </td>
+          <td style="white-space:nowrap;">
+            <select data-id="${issue.id}" class="updateStatus" style="padding:6px 8px; font-size:12px; margin-bottom:6px;">
+              ${STATUS_STEPS.map(s => `<option ${issue.status === s ? "selected" : ""}>${s}</option>`).join("")}
+            </select>
+            <button class="btn btn-danger btn-sm deleteBtn" data-id="${issue.id}">Delete</button>
+          </td>
+        </tr>
+      `).join("") || `<tr><td colspan="6" class="text-center muted">No issues found.</td></tr>`;
+
+      document.querySelectorAll(".assignDept").forEach(sel => sel.addEventListener("change", (e) => {
+        const issue = db.issues.find(i => i.id === e.target.dataset.id);
+        issue.assignedDept = e.target.value;
+        if (issue.status === "Reported" || issue.status === "Verified") {
+          issue.status = "Assigned";
+          issue.history.push({ status: "Assigned", date: new Date().toISOString() });
+        }
+        db.notifications.push({ id: uid("n"), userId: issue.reportedBy, message: `"${issue.title}" has been assigned to ${issue.assignedDept}.`, date: new Date().toISOString(), read: false });
+        saveDB(db);
+        toast("Department assigned.");
+        renderTable(); renderKPIs();
+      }));
+
+      document.querySelectorAll(".updateStatus").forEach(sel => sel.addEventListener("change", (e) => {
+        const issue = db.issues.find(i => i.id === e.target.dataset.id);
+        issue.status = e.target.value;
+        if (!issue.history.find(h => h.status === issue.status)) issue.history.push({ status: issue.status, date: new Date().toISOString() });
+        db.notifications.push({ id: uid("n"), userId: issue.reportedBy, message: `"${issue.title}" status updated to ${issue.status}.`, date: new Date().toISOString(), read: false });
+        saveDB(db);
+        toast("Status updated.");
+        renderTable(); renderKPIs();
+      }));
+
+      document.querySelectorAll(".deleteBtn").forEach(btn => btn.addEventListener("click", (e) => {
+        if (!confirm("Delete this report? This cannot be undone.")) return;
+        const idx = db.issues.findIndex(i => i.id === e.target.dataset.id);
+        db.issues.splice(idx, 1);
+        saveDB(db);
+        toast("Report deleted.");
+        renderTable(); renderKPIs();
+      }));
+    }
+    renderTable();
+
+    ["search","filterStatus","filterCategory"].forEach(id => document.getElementById(id).addEventListener("input", renderTable));
+  }
+</script>
+</body>
+</html>
